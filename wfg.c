@@ -37,6 +37,7 @@ int maxn = 0;
 
 
 static avl_tree_t *tree;
+double hv(FRONT);
 
 static int compare_tree_asc( const void *p1, const void *p2)
 {
@@ -49,8 +50,6 @@ static int compare_tree_asc( const void *p1, const void *p2)
         return 0;
 }
 
-
-double hv(FRONT);
 
 
 int greater(const void *v1, const void *v2)

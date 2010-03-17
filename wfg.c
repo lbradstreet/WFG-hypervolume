@@ -181,7 +181,6 @@ double hv3_AVL(FRONT ps)
     else
       height = ps.points[i-1].objectives[2] - ps.points[i].objectives[2];
 
-      
       // search tree for point q to the right of current point
       const double * prv_ip, * nxt_ip;
       avl_node_t *tnode;
@@ -196,7 +195,6 @@ double hv3_AVL(FRONT ps)
               ? (double *)(tnode->next->item)
               : ref.objectives;
       }
-
                 // if p is not dominated
                 if (nxt_ip[0] > ps.points[i].objectives[0]) {
 
@@ -247,7 +245,6 @@ double hv3_AVL(FRONT ps)
 
                 if (height > 0)
                     hyperv += hypera * height;
-
         }
         avl_clear_tree(tree);
 
@@ -472,13 +469,7 @@ double hv(FRONT ps)
   #if opt == 2
   if (n == 2) return hv2(ps);
   #elif opt == 4
-  if (n == 3) return hv3_lucas(ps);
-    //double hv3_2 = hv3(ps);
-    //double hv3_2 = hv3_1;
-    //if (abs(hv3_1 - hv3_2) > 0.00000001)
-    //  printf ("SIG DIFF: hv3_lucas %f, hv3 %f\n", hv3_1, hv3_2);
-    //return hv3_1;
-  //}
+  if (n == 3) return hv3_AVL(ps);
   #else
   if (n == 3) return hv3(ps);
   #endif
@@ -518,7 +509,7 @@ int main(int argc, char *argv[])
   #else
 
   int optn = opt;
-  // use 3 for tree 3d
+  // use 3 for tree 3D
   if (optn == 4)
     optn = 3;
 

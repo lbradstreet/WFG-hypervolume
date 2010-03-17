@@ -27,6 +27,7 @@ POINT ref; // the reference point
 #define BIG          BETTER(999999, -999999)
 
 #define mode2        (mode == 0 ? 1 : 0) // used in memory management 
+#define REFERENCE_POINT 100.0
 
 FRONT *fs;      // memory management stuff 
 int fr = 0;     // current depth 
@@ -155,25 +156,10 @@ double hv2(FRONT ps)
 
 
 
-double hv3_lucas(FRONT ps)
+double hv3_AVL(FRONT ps)
 // returns the hypervolume of ps[0 ..] in 3D 
 // assumes that ps is sorted improving
 {
-
-  /*
-  POINT *base = fs[fr].points;
-  base[0].objectives[0] = ref.objectives[0];
-  base[0].objectives[1] = BIG; // BETTER(ps.points[ps.nPoints - 1].objectives[1] + 1,ps.points[ps.nPoints - 1].objectives[1] - 1); 
-  base[1].objectives[0] = ps.points[ps.nPoints - 1].objectives[0];
-  base[1].objectives[1] = ps.points[ps.nPoints - 1].objectives[1];
-  base[2].objectives[0] = BIG; // BETTER(ps.points[0].objectives[0] + 1,ps.points[0].objectives[0] - 1); 
-  base[2].objectives[1] = ref.objectives[1];
-  */
-
-  //pp = list->next[2];
-  //avl_init_node(pp->tnode,pp->x);
-  //avl_insert_top(tree,pp->tnode);
-
   avl_init_node(ps.points[ps.nPoints-1].tnode,ps.points[ps.nPoints-1].objectives);
   avl_insert_top(tree,ps.points[ps.nPoints-1].tnode);
 
@@ -190,18 +176,16 @@ double hv3_lucas(FRONT ps)
 
   for (int i = ps.nPoints - 2; i >= 0; i--)
   {
-    // reference point
     if (i == 0)
       height = ref.objectives[2] - ps.points[i].objectives[2];
     else
       height = ps.points[i-1].objectives[2] - ps.points[i].objectives[2];
 
       
-    // search tree for point q to the right of current point
+      // search tree for point q to the right of current point
       const double * prv_ip, * nxt_ip;
       avl_node_t *tnode;
 
-      //avl_init_node(pp->tnode, pp->x);
       avl_init_node(ps.points[i].tnode, ps.points[i].objectives);
 
       if (avl_search_closest(tree, ps.points[i].objectives, &tnode) <= 0) {
@@ -213,9 +197,7 @@ double hv3_lucas(FRONT ps)
               : ref.objectives;
       }
 
-
                 // if p is not dominated
-                //if (nxt_ip[0] > pp->x[0]) {
                 if (nxt_ip[0] > ps.points[i].objectives[0]) {
 
                   // insert p in tree
@@ -227,7 +209,6 @@ double hv3_lucas(FRONT ps)
                         if (prv_ip[0] > ps.points[i].objectives[0]) {
                             const double * cur_ip;
 
-                            //tnode = pp->tnode->prev;
                             tnode = ps.points[i].tnode->prev;
                             // cur_ip = point dominated by pp with highest [0]-coordinate
                             cur_ip = (double *)(tnode->item);
@@ -237,7 +218,6 @@ double hv3_lucas(FRONT ps)
                                 prv_ip = (double *)(tnode->prev->item);
                                 // decrease area by contribution of s
                                 hypera -= (prv_ip[1] - cur_ip[1])*(nxt_ip[0] - cur_ip[0]);
-                                //if (prv_ip[0] < pp->x[0])
                                 if (prv_ip[0] < ps.points[i].objectives[0])
                                     break; // prv is not dominated by pp
                                 cur_ip = prv_ip;
@@ -259,7 +239,6 @@ double hv3_lucas(FRONT ps)
                         prv_ip = ref.objectives;
 
                     // increase area by contribution of p
-                    //hypera += (prv_ip[1] - pp->x[1])*(nxt_ip[0] - pp->x[0]);
                     hypera += (prv_ip[1] -
                         ps.points[i].objectives[1])*(nxt_ip[0] -
                           ps.points[i].objectives[0]);
@@ -276,14 +255,12 @@ double hv3_lucas(FRONT ps)
 
   }
 
+
+
 double hv3(FRONT ps)
 // returns the hypervolume of ps[0 ..] in 3D 
 // assumes that ps is sorted improving
 {
-
-
-
-
   POINT *base = fs[fr].points;
   base[0].objectives[0] = ref.objectives[0];
   base[0].objectives[1] = BIG; // BETTER(ps.points[ps.nPoints - 1].objectives[1] + 1,ps.points[ps.nPoints - 1].objectives[1] - 1); 
@@ -291,39 +268,24 @@ double hv3(FRONT ps)
   base[1].objectives[1] = ps.points[ps.nPoints - 1].objectives[1];
   base[2].objectives[0] = BIG; // BETTER(ps.points[0].objectives[0] + 1,ps.points[0].objectives[0] - 1); 
   base[2].objectives[1] = ref.objectives[1];
-
-  // initialise tree, sort ps in 3rd objective, set volume to 0
-  double volume = 0;
-
   int z = 2;
-  // area = p[0] * p[1]
   double area = fabs((base[1].objectives[0] - base[0].objectives[0]) * 
                      (base[1].objectives[1] - base[2].objectives[1]));
-  // for each p in ps
+  double volume = 0;
   for (int i = ps.nPoints - 2; i >= 0; i--)
-    {
-      // increase volume by slice between z and p
-     volume += area * fabs(ps.points[i].objectives[2] - ps.points[i + 1].objectives[2]);
+    {volume += area * fabs(ps.points[i].objectives[2] - ps.points[i + 1].objectives[2]);
      int jl = 1; int jr = z; 
-     // search tree for point q to the right of p
      while (jr > jl + 1)
        {int m = (jl + jr) / 2;
         if BEATS(ps.points[i].objectives[0],base[m].objectives[0]) jl = m; else jr = m;
        }
-     // if p is not dominated
      if BEATS(base[jl].objectives[0],ps.points[i].objectives[0]) jr = jl; else jl = jr;
-
-     // for each point s in tree dominated by p
      while BEATSEQ(ps.points[i].objectives[1],base[jl - 1].objectives[1])
-       // remove s from tree
-       // decrease area by contribution of s
        {area -= fabs((base[jl - 1].objectives[0] - base[jl - 2].objectives[0]) * 
                      (base[jl - 1].objectives[1] - base[jr].objectives[1]));
         jl--;
        }
-
      switch (jr - jl)
-       // think this is remove s from tree
        {case  0: z++;
                  for (int k = z; k > jl; k--) 
                    {base[k].objectives[0] = base[k - 1].objectives[0];
@@ -337,20 +299,16 @@ double hv3(FRONT ps)
                     base[k + 1].objectives[1] = base[k + jr - jl].objectives[1];
 	           } 
        }
-     // z = p?
      base[jl].objectives[0] = ps.points[i].objectives[0];
      base[jl].objectives[1] = ps.points[i].objectives[1];
-     // increase area by contribution of p
      area += fabs((base[jl].objectives[0] - base[jl - 1].objectives[0]) * 
                   (base[jl].objectives[1] - base[jl + 1].objectives[1]));
-     // insert p in tree
-     // DO IT HERE
     }
-  // increase volume by A * z[2]
   volume += area * fabs(ref.objectives[2] - ps.points[0].objectives[2]);
-
   return volume;
 }
+
+
 
 
 double inclhv(POINT p)
@@ -368,7 +326,8 @@ double exclhv(FRONT ps, int p)
 {
   double volume = inclhv(ps.points[p]);
   if (ps.nPoints > p + 1) 
-    {makeDominatedBit(ps, p);
+    {
+     makeDominatedBit(ps, p);
      volume -= hv(fs[fr - 1]);
      fr--;
     }
@@ -388,13 +347,15 @@ int smallestpoint0(FRONT ps)
      ps.points[0] = ps.points[i];
      ps.points[i] = t;
      double volume = exclhv(ps, 0);
+     printf ("Volume %d, %.7e\n", i, volume);
      if (volume < smallestvolume) {smallest = i; smallestvolume = volume;}
     }
   return smallest;
 }
 
 
-int smallestpoint1(FRONT ps)
+int smallestpoint1_old(FRONT ps)
+//int smallestpoint1(FRONT ps)
 // returns the least contributor in ps[0 ..] 
 // evaluates the first point completely, then as little as possible of each subsequent point 
 {
@@ -412,15 +373,139 @@ int smallestpoint1(FRONT ps)
      #endif
      for (int j = 0; j < fs[0].nPoints; j++)
        volume -= inclhv(fs[0].points[j]);
+
      int j = fs[0].nPoints - 2; 
      while (volume < smallestvolume && j >= 0)
        {makeDominatedBit(fs[0], j);
-        volume += hv(fs[1]);
+         double newvol = hv(fs[1]);
+         printf ("Added volume %.7e to %e, incv %e\n", newvol, volume,
+             inclhv(fs[0].points[j]));
+        //volume += hv(fs[1]);
+        volume += newvol;
         fr--;
         j--;
        }
      fr--;
+     printf ("Volume %d, %.7e\n", i, volume);
      // printf("j(%d) = %d\n", i, j);
+     if (volume < smallestvolume) {smallest = i; smallestvolume = volume;}
+    }
+  return smallest;
+}
+
+
+//int smallestpoint1_new(FRONT ps)
+int smallestpoint1(FRONT ps)
+// returns the least contributor in ps[0 ..] 
+// evaluates the first point completely, then as little as possible of each subsequent point 
+{
+  int smallest = 0;
+  double smallestvolume = exclhv(ps, 0);
+  POINT t;
+  for (int i = 1; i < ps.nPoints; i++)
+    {t = ps.points[0];
+     ps.points[0] = ps.points[i];
+     ps.points[i] = t;
+     makeDominatedBit(ps, 0);
+
+     double inclhv_cpoint = inclhv(ps.points[0]);
+     double inclhv_cpoint_mfirst = inclhv_cpoint /
+       (REFERENCE_POINT - ps.points[0].objectives[n-1]);
+//     #if opt > 0
+     qsort(fs[0].points, fs[0].nPoints, sizeof(POINT), greater);
+//     #endif
+
+     //double volume = inclhv_cpoint;
+     double volume = 0;
+     // if there is a point value greater than contributing point, use
+     // contributing point value, otherwise use greatest point value
+     /*
+     POINT inclusive_point;
+     inclusive_point.objectives = malloc (sizeof(double) * n);
+     */
+     
+
+     // USE INCLHV(PS.POINTS[0], WITH PS.POINTS[0] IN 0,TH OBJECTIVE ONLY UP TO
+     // GREATEST POINT SO FAR. .'. THIS VALUE WILL BE CHANGING WHENEVER WE
+     // ENCOUNTER A POINT THAT WILL MAKE IT BIGGER. MAYBE JUST UPDATE WHEN WE
+     // GET A BIGGER INCLHV?
+
+
+     double incvols[fs[0].nPoints];
+     double incvolstotal = 0;
+
+     for (int j = 0; j < fs[0].nPoints; j++)
+     {
+       incvols[j] = inclhv(fs[0].points[j]);
+       incvolstotal += incvols[j];
+     }
+     double testvol = volume - incvolstotal;
+
+     /*
+     for (int j = 0; j < fs[0].nPoints; j++)
+       volume -= inclhv(fs[0].points[j]);
+       */
+
+     //printf ("%.7e volume %.7e \n", volume, testvol );
+
+     //volume = testvol;
+    //
+     //volume -= incvolstotal;
+
+
+
+     volume -= incvols[fs[0].nPoints-1];
+    
+     double inclhv_incpt = 0;
+
+     int j = fs[0].nPoints - 2; 
+     //while (inclhv_incpt + volume < smallestvolume && j >= 0)
+     while (j >= 0)
+       {
+
+         printf ("FVAL: %f\n", fs[0].points[j].objectives[n-1]);
+
+         //inclhv_incpt = inclhv(inclusive_point);
+         //printf ("inclhv_cpoint %e, inclhv inc point %e\n", inclhv_cpoint,
+         //    inclhv_incpt);
+
+ 
+          printf ("fs[0].points[j].objective[0] %e\n",
+              fs[0].points[j].objectives[n-1]);
+
+
+          volume -= incvols[j];
+          makeDominatedBit(fs[0], j);
+          //volume += hv(fs[1]);
+          double voladded = hv(fs[1]);
+          printf ("%d h: %e, took off %e added %e, difference %e\n", i, volume, incvols[j],
+              voladded, (voladded-incvols[j]));
+          volume += voladded;
+          printf ("volume now: %e\n", volume);
+          printf ("volume estimation: %e\n", volume+inclhv_incpt);
+          if (j != 0)
+          printf ("INCVOL %e vs %e\n", inclhv_cpoint, inclhv_cpoint_mfirst *
+              (fs[0].points[j-1].objectives[n-1] - ps.points[0].objectives[n-1]));
+          else
+          printf ("INCVOL %e vs %e\n", inclhv_cpoint, inclhv_cpoint_mfirst *
+              (REFERENCE_POINT - ps.points[0].objectives[n-1]));
+              //(fs[0].points[j].objectives[n-1] - ps.points[0].objectives[n-1]));
+          fr--;
+          j--;
+       }
+
+
+     volume += inclhv_cpoint;
+     printf ("%d hv: %e\n", i, volume);
+     /*
+     printf ("j %d\n", j);
+     if (volume < smallestvolume && j != -1)
+     {
+       printf ("Stopped early\n");
+     }
+     */
+     fr--;
+      printf("j(%d) = %d\n", i, j);
      if (volume < smallestvolume) {smallest = i; smallestvolume = volume;}
     }
   return smallest;
@@ -531,6 +616,7 @@ double hv(FRONT ps)
     // we can ditch dominated points here, 
     // but they will be ditched anyway in dominatedBit 
     volume += fabs(ps.points[i].objectives[n] - ref.objectives[n]) * exclhv(ps, i);
+
   n++; 
   #endif
 
@@ -586,7 +672,7 @@ int main(int argc, char *argv[])
   ref.tnode = malloc(sizeof(avl_node_t));
   if (argc == 2)
     {printf("No reference point provided: using the origin\n");
-     for (int i = 0; i < maxn; i++) ref.objectives[i] = 10000;
+     for (int i = 0; i < maxn; i++) ref.objectives[i] = REFERENCE_POINT;
     }
   else if (argc - 2 != maxn)
     {printf("Your reference point should have %d values\n", maxn);

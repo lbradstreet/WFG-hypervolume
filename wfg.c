@@ -354,8 +354,24 @@ int smallestpoint0(FRONT ps)
 }
 
 
-int smallestpoint1_old(FRONT ps)
-//int smallestpoint1(FRONT ps)
+
+void fixHeap(JOB *js, int next)
+// fixes the heap js, next being the new smallest element
+{
+  /*
+        JOB jz = js[0];
+        js[0] = js[next];
+        js[next] = jz;
+        if (js[0].left == ps.nPoints)
+          {js[0].left = next; js[next].left = ps.nPoints; js[next].right = ps.nPoints;}
+        else if (js[0].right == ps.nPoints)
+          {js[0].right = next; js[next].left = ps.nPoints; js[next].right = ps.nPoints;}
+        else ;
+*/
+}
+
+
+int smallestpoint1(FRONT ps)
 // returns the least contributor in ps[0 ..] 
 // evaluates the first point completely, then as little as possible of each subsequent point 
 {
@@ -373,159 +389,20 @@ int smallestpoint1_old(FRONT ps)
      #endif
      for (int j = 0; j < fs[0].nPoints; j++)
        volume -= inclhv(fs[0].points[j]);
-
      int j = fs[0].nPoints - 2; 
      while (volume < smallestvolume && j >= 0)
        {makeDominatedBit(fs[0], j);
-         double newvol = hv(fs[1]);
-         printf ("Added volume %.7e to %e, incv %e\n", newvol, volume,
-             inclhv(fs[0].points[j]));
-        //volume += hv(fs[1]);
-        volume += newvol;
+        volume += hv(fs[1]);
         fr--;
         j--;
        }
      fr--;
-     printf ("Volume %d, %.7e\n", i, volume);
      // printf("j(%d) = %d\n", i, j);
      if (volume < smallestvolume) {smallest = i; smallestvolume = volume;}
     }
   return smallest;
 }
 
-
-//int smallestpoint1_new(FRONT ps)
-int smallestpoint1(FRONT ps)
-// returns the least contributor in ps[0 ..] 
-// evaluates the first point completely, then as little as possible of each subsequent point 
-{
-  int smallest = 0;
-  double smallestvolume = exclhv(ps, 0);
-  POINT t;
-  for (int i = 1; i < ps.nPoints; i++)
-    {t = ps.points[0];
-     ps.points[0] = ps.points[i];
-     ps.points[i] = t;
-     makeDominatedBit(ps, 0);
-
-     double inclhv_cpoint = inclhv(ps.points[0]);
-     double inclhv_cpoint_mfirst = inclhv_cpoint /
-       (REFERENCE_POINT - ps.points[0].objectives[n-1]);
-//     #if opt > 0
-     qsort(fs[0].points, fs[0].nPoints, sizeof(POINT), greater);
-//     #endif
-
-     //double volume = inclhv_cpoint;
-     double volume = 0;
-     // if there is a point value greater than contributing point, use
-     // contributing point value, otherwise use greatest point value
-     /*
-     POINT inclusive_point;
-     inclusive_point.objectives = malloc (sizeof(double) * n);
-     */
-     
-
-     // USE INCLHV(PS.POINTS[0], WITH PS.POINTS[0] IN 0,TH OBJECTIVE ONLY UP TO
-     // GREATEST POINT SO FAR. .'. THIS VALUE WILL BE CHANGING WHENEVER WE
-     // ENCOUNTER A POINT THAT WILL MAKE IT BIGGER. MAYBE JUST UPDATE WHEN WE
-     // GET A BIGGER INCLHV?
-
-
-     double incvols[fs[0].nPoints];
-     double incvolstotal = 0;
-
-     for (int j = 0; j < fs[0].nPoints; j++)
-     {
-       incvols[j] = inclhv(fs[0].points[j]);
-       incvolstotal += incvols[j];
-     }
-     double testvol = volume - incvolstotal;
-
-     /*
-     for (int j = 0; j < fs[0].nPoints; j++)
-       volume -= inclhv(fs[0].points[j]);
-       */
-
-     //printf ("%.7e volume %.7e \n", volume, testvol );
-
-     //volume = testvol;
-    //
-     //volume -= incvolstotal;
-
-
-
-     volume -= incvols[fs[0].nPoints-1];
-    
-     double inclhv_incpt = 0;
-
-     int j = fs[0].nPoints - 2; 
-     //while (inclhv_incpt + volume < smallestvolume && j >= 0)
-     while (j >= 0)
-       {
-
-         printf ("FVAL: %f\n", fs[0].points[j].objectives[n-1]);
-
-         //inclhv_incpt = inclhv(inclusive_point);
-         //printf ("inclhv_cpoint %e, inclhv inc point %e\n", inclhv_cpoint,
-         //    inclhv_incpt);
-
- 
-          printf ("fs[0].points[j].objective[0] %e\n",
-              fs[0].points[j].objectives[n-1]);
-
-
-          volume -= incvols[j];
-          makeDominatedBit(fs[0], j);
-          //volume += hv(fs[1]);
-          double voladded = hv(fs[1]);
-          printf ("%d h: %e, took off %e added %e, difference %e\n", i, volume, incvols[j],
-              voladded, (voladded-incvols[j]));
-          volume += voladded;
-          printf ("volume now: %e\n", volume);
-          printf ("volume estimation: %e\n", volume+inclhv_incpt);
-          if (j != 0)
-          printf ("INCVOL %e vs %e\n", inclhv_cpoint, inclhv_cpoint_mfirst *
-              (fs[0].points[j-1].objectives[n-1] - ps.points[0].objectives[n-1]));
-          else
-          printf ("INCVOL %e vs %e\n", inclhv_cpoint, inclhv_cpoint_mfirst *
-              (REFERENCE_POINT - ps.points[0].objectives[n-1]));
-              //(fs[0].points[j].objectives[n-1] - ps.points[0].objectives[n-1]));
-          fr--;
-          j--;
-       }
-
-
-     volume += inclhv_cpoint;
-     printf ("%d hv: %e\n", i, volume);
-     /*
-     printf ("j %d\n", j);
-     if (volume < smallestvolume && j != -1)
-     {
-       printf ("Stopped early\n");
-     }
-     */
-     fr--;
-      printf("j(%d) = %d\n", i, j);
-     if (volume < smallestvolume) {smallest = i; smallestvolume = volume;}
-    }
-  return smallest;
-}
-
-
-void fixHeap(JOB *js, int next)
-// fixes the heap js, next being the new smallest element
-{
-  /*
-        JOB jz = js[0];
-        js[0] = js[next];
-        js[next] = jz;
-        if (js[0].left == ps.nPoints)
-          {js[0].left = next; js[next].left = ps.nPoints; js[next].right = ps.nPoints;}
-        else if (js[0].right == ps.nPoints)
-          {js[0].right = next; js[next].left = ps.nPoints; js[next].right = ps.nPoints;}
-        else ;
-*/
-}
 
 
 int smallestpoint2(FRONT ps)

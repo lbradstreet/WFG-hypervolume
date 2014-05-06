@@ -6,6 +6,13 @@ usage/bugs/improvements.
 This code includes a high performance implementation of the WFG algorithm, 
 used to calculate the hypervolume indicator for a set of non-dominated points.
 
+If you make substantive use of this algorithm, please reference the following paper:
+
+
+[WFG2010b] Lyndon While, Lucas Bradstreet, and Luigi Barone. 
+A Fast Way of Calculating Exact Hypervolumes. IEEE Transactions on Evolutionary Computation 16(1), 2012
+
+
 CREDIT:
 
 Code used to calculate the 3D hypervolume base case was taken from hv-1.2 available at

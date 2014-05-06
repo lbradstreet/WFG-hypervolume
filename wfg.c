@@ -1,3 +1,27 @@
+/*
+
+ This program is free software (software libre); you can redistribute
+ it and/or modify it under the terms of the GNU General Public License
+ as published by the Free Software Foundation; either version 2 of the
+ License, or (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful, but
+ WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, you can obtain a copy of the GNU
+ General Public License at:
+                 http://www.gnu.org/copyleft/gpl.html
+ or by writing to:
+           Free Software Foundation, Inc., 59 Temple Place,
+                 Suite 330, Boston, MA 02111-1307 USA
+
+ ----------------------------------------------------------------------
+
+*/
+
 // To do: 
 // - can we sort less often or reduce/optimise dominance checks? 
 // - should we use FPL's data structure? 
@@ -5,7 +29,6 @@
 // - heuristics 
 
 // opt:  0 = basic, 1 = sorting, 2 = slicing to 2D, 3 = slicing to 3D 
-// mode: 0 = hv,    1 = exclhv,  2 = smallest point complete, 3 = smallest point inorder, 4 = smallest point BFQ
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -15,18 +38,21 @@
 #include "wfg.h"
 #include "avl.h"
 
-int n;     // the number of objectives 
-POINT ref; // the reference point 
+#define MAXIMISING true
 
-#define BEATS(x,y)   (x <  y) // change these for max/minimisation
-#define BEATSEQ(x,y) (x <= y) // currently minimisation 
+#if MAXIMISING
+#define BEATS(x,y)   (x >  y) 
+#define BEATSEQ(x,y) (x >= y) 
+#else
+#define BEATS(x,y)   (x <  y) 
+#define BEATSEQ(x,y) (x <= y) 
+#endif
 
 #define WORSE(x,y)   (BEATS(y,x) ? (x) : (y)) 
 #define BETTER(x,y)  (BEATS(y,x) ? (y) : (x)) 
 
-#define BIG          BETTER(999999, -999999)
-
-#define mode2        (mode == 0 ? 1 : 0) // used in memory management 
+int n;     // the number of objectives 
+POINT ref; // the reference point 
 
 FRONT *fs;      // memory management stuff 
 int fr = 0;     // current depth 
@@ -36,20 +62,16 @@ int maxn = 0;
 
 
 static avl_tree_t *tree;
+double hv(FRONT);
 
 static int compare_tree_asc( const void *p1, const void *p2)
 {
     const double x1= *((const double *)p1+1);
     const double x2= *((const double *)p2+1);
 
-    if (x1 != x2)
-        return (x1 > x2) ? -1 : 1;
-    else
-        return 0;
+    if (x1 != x2) return (x1 > x2) ? -1 : 1;
+    else          return 0;
 }
-
-
-double hv(FRONT);
 
 
 int greater(const void *v1, const void *v2)
@@ -57,43 +79,37 @@ int greater(const void *v1, const void *v2)
 {
   POINT p = *(POINT*)v1;
   POINT q = *(POINT*)v2;
-  #if mode == 0 && opt == 1
+  #if opt == 1
   for (int i = n - fr - 1; i >= 0; i--)
   #else
   for (int i = n - 1; i >= 0; i--)
   #endif
     if BEATS(p.objectives[i],q.objectives[i]) return  1;
     else
-    // can we manage with only one comparison?
     if BEATS(q.objectives[i],p.objectives[i]) return -1;
   return 0;
-}
-
-
-int smallersofar(const void *v1, const void *v2)
-// this sorts jobs by partial volume 
-{
-  JOB j1 = *(JOB*)v1;
-  JOB j2 = *(JOB*)v2;
-  return j1.partial > j2.partial;
 }
 
 
 int dominates2way(POINT p, POINT q)
 // returns -1 if p dominates q, 1 if q dominates p, 2 if p == q, 0 otherwise 
 {
-  int z = 2;
   // domination could be checked in either order 
-  #if mode == 0 && opt == 1
+  #if opt == 1
   for (int i = n - fr - 1; i >= 0; i--)
   #else
   for (int i = n - 1; i >= 0; i--)
   #endif
-    if BEATS(p.objectives[i],q.objectives[i]) {if (z ==  1) return 0; else z = -1;}
+    if BEATS(p.objectives[i],q.objectives[i]) 
+      {for (int j = i - 1; j >= 0; j--) 
+         if BEATS(q.objectives[j],p.objectives[j]) return 0; 
+       return -1;}
     else
-    // can we manage with only one comparison?
-    if BEATS(q.objectives[i],p.objectives[i]) {if (z == -1) return 0; else z =  1;}
-  return z;
+    if BEATS(q.objectives[i],p.objectives[i]) 
+      {for (int j = i - 1; j >= 0; j--) 
+         if BEATS(p.objectives[j],q.objectives[j]) return 0; 
+       return  1;}
+  return 2;
 }
 
 
@@ -124,9 +140,9 @@ void makeDominatedBit(FRONT ps, int p)
      while (j < fs[fr].nPoints && keep)
        switch (dominates2way(fs[fr].points[i], fs[fr].points[j]))
 	 {case -1: t = fs[fr].points[j];
-                   fs[fr].points[j] = fs[fr].points[fs[fr].nPoints - 1]; 
-                   fs[fr].points[fs[fr].nPoints - 1] = t; 
                    fs[fr].nPoints--; 
+                   fs[fr].points[j] = fs[fr].points[fs[fr].nPoints]; 
+                   fs[fr].points[fs[fr].nPoints] = t; 
                    break;
           case  0: j++; break;
           // case  2: printf("Identical points!\n");
@@ -153,27 +169,24 @@ double hv2(FRONT ps)
   return volume;
 }
 
+double hv3_AVL(FRONT ps)
+/* hv3_AVL: 3D algorithm code taken from version hv-1.2 available at
+http://iridia.ulb.ac.be/~manuel/hypervolume and proposed by:
 
+Carlos M. Fonseca, Luís Paquete, and Manuel López-Ibáñez.  An improved
+dimension-sweep algorithm for the hypervolume indicator. In IEEE
+Congress on Evolutionary Computation, pages 1157-1163, Vancouver,
+Canada, July 2006.
 
-double hv3_lucas(FRONT ps)
+                     Copyright (c) 2009
+                Carlos M. Fonseca <cmfonsec@ualg.pt>
+           Manuel Lopez-Ibanez <manuel.lopez-ibanez@ulb.ac.be>
+                  Luis Paquete <paquete@dei.uc.pt>
+*/
+
 // returns the hypervolume of ps[0 ..] in 3D 
 // assumes that ps is sorted improving
 {
-
-  /*
-  POINT *base = fs[fr].points;
-  base[0].objectives[0] = ref.objectives[0];
-  base[0].objectives[1] = BIG; // BETTER(ps.points[ps.nPoints - 1].objectives[1] + 1,ps.points[ps.nPoints - 1].objectives[1] - 1); 
-  base[1].objectives[0] = ps.points[ps.nPoints - 1].objectives[0];
-  base[1].objectives[1] = ps.points[ps.nPoints - 1].objectives[1];
-  base[2].objectives[0] = BIG; // BETTER(ps.points[0].objectives[0] + 1,ps.points[0].objectives[0] - 1); 
-  base[2].objectives[1] = ref.objectives[1];
-  */
-
-  //pp = list->next[2];
-  //avl_init_node(pp->tnode,pp->x);
-  //avl_insert_top(tree,pp->tnode);
-
   avl_init_node(ps.points[ps.nPoints-1].tnode,ps.points[ps.nPoints-1].objectives);
   avl_insert_top(tree,ps.points[ps.nPoints-1].tnode);
 
@@ -190,18 +203,15 @@ double hv3_lucas(FRONT ps)
 
   for (int i = ps.nPoints - 2; i >= 0; i--)
   {
-    // reference point
     if (i == 0)
       height = ref.objectives[2] - ps.points[i].objectives[2];
     else
       height = ps.points[i-1].objectives[2] - ps.points[i].objectives[2];
 
-      
-    // search tree for point q to the right of current point
+      // search tree for point q to the right of current point
       const double * prv_ip, * nxt_ip;
       avl_node_t *tnode;
 
-      //avl_init_node(pp->tnode, pp->x);
       avl_init_node(ps.points[i].tnode, ps.points[i].objectives);
 
       if (avl_search_closest(tree, ps.points[i].objectives, &tnode) <= 0) {
@@ -212,10 +222,7 @@ double hv3_lucas(FRONT ps)
               ? (double *)(tnode->next->item)
               : ref.objectives;
       }
-
-
                 // if p is not dominated
-                //if (nxt_ip[0] > pp->x[0]) {
                 if (nxt_ip[0] > ps.points[i].objectives[0]) {
 
                   // insert p in tree
@@ -227,7 +234,6 @@ double hv3_lucas(FRONT ps)
                         if (prv_ip[0] > ps.points[i].objectives[0]) {
                             const double * cur_ip;
 
-                            //tnode = pp->tnode->prev;
                             tnode = ps.points[i].tnode->prev;
                             // cur_ip = point dominated by pp with highest [0]-coordinate
                             cur_ip = (double *)(tnode->item);
@@ -237,7 +243,6 @@ double hv3_lucas(FRONT ps)
                                 prv_ip = (double *)(tnode->prev->item);
                                 // decrease area by contribution of s
                                 hypera -= (prv_ip[1] - cur_ip[1])*(nxt_ip[0] - cur_ip[0]);
-                                //if (prv_ip[0] < pp->x[0])
                                 if (prv_ip[0] < ps.points[i].objectives[0])
                                     break; // prv is not dominated by pp
                                 cur_ip = prv_ip;
@@ -259,7 +264,6 @@ double hv3_lucas(FRONT ps)
                         prv_ip = ref.objectives;
 
                     // increase area by contribution of p
-                    //hypera += (prv_ip[1] - pp->x[1])*(nxt_ip[0] - pp->x[0]);
                     hypera += (prv_ip[1] -
                         ps.points[i].objectives[1])*(nxt_ip[0] -
                           ps.points[i].objectives[0]);
@@ -268,89 +272,10 @@ double hv3_lucas(FRONT ps)
 
                 if (height > 0)
                     hyperv += hypera * height;
-
         }
         avl_clear_tree(tree);
-
         return hyperv;
-
   }
-
-double hv3(FRONT ps)
-// returns the hypervolume of ps[0 ..] in 3D 
-// assumes that ps is sorted improving
-{
-
-
-
-
-  POINT *base = fs[fr].points;
-  base[0].objectives[0] = ref.objectives[0];
-  base[0].objectives[1] = BIG; // BETTER(ps.points[ps.nPoints - 1].objectives[1] + 1,ps.points[ps.nPoints - 1].objectives[1] - 1); 
-  base[1].objectives[0] = ps.points[ps.nPoints - 1].objectives[0];
-  base[1].objectives[1] = ps.points[ps.nPoints - 1].objectives[1];
-  base[2].objectives[0] = BIG; // BETTER(ps.points[0].objectives[0] + 1,ps.points[0].objectives[0] - 1); 
-  base[2].objectives[1] = ref.objectives[1];
-
-  // initialise tree, sort ps in 3rd objective, set volume to 0
-  double volume = 0;
-
-  int z = 2;
-  // area = p[0] * p[1]
-  double area = fabs((base[1].objectives[0] - base[0].objectives[0]) * 
-                     (base[1].objectives[1] - base[2].objectives[1]));
-  // for each p in ps
-  for (int i = ps.nPoints - 2; i >= 0; i--)
-    {
-      // increase volume by slice between z and p
-     volume += area * fabs(ps.points[i].objectives[2] - ps.points[i + 1].objectives[2]);
-     int jl = 1; int jr = z; 
-     // search tree for point q to the right of p
-     while (jr > jl + 1)
-       {int m = (jl + jr) / 2;
-        if BEATS(ps.points[i].objectives[0],base[m].objectives[0]) jl = m; else jr = m;
-       }
-     // if p is not dominated
-     if BEATS(base[jl].objectives[0],ps.points[i].objectives[0]) jr = jl; else jl = jr;
-
-     // for each point s in tree dominated by p
-     while BEATSEQ(ps.points[i].objectives[1],base[jl - 1].objectives[1])
-       // remove s from tree
-       // decrease area by contribution of s
-       {area -= fabs((base[jl - 1].objectives[0] - base[jl - 2].objectives[0]) * 
-                     (base[jl - 1].objectives[1] - base[jr].objectives[1]));
-        jl--;
-       }
-
-     switch (jr - jl)
-       // think this is remove s from tree
-       {case  0: z++;
-                 for (int k = z; k > jl; k--) 
-                   {base[k].objectives[0] = base[k - 1].objectives[0];
-                    base[k].objectives[1] = base[k - 1].objectives[1];
-                   }
-                 break;
-        case  1: break;
-        default: z -= jr - jl - 1;
-                 for (int k = jl; k < z; k++) 
-                   {base[k + 1].objectives[0] = base[k + jr - jl].objectives[0];
-                    base[k + 1].objectives[1] = base[k + jr - jl].objectives[1];
-	           } 
-       }
-     // z = p?
-     base[jl].objectives[0] = ps.points[i].objectives[0];
-     base[jl].objectives[1] = ps.points[i].objectives[1];
-     // increase area by contribution of p
-     area += fabs((base[jl].objectives[0] - base[jl - 1].objectives[0]) * 
-                  (base[jl].objectives[1] - base[jl + 1].objectives[1]));
-     // insert p in tree
-     // DO IT HERE
-    }
-  // increase volume by A * z[2]
-  volume += area * fabs(ref.objectives[2] - ps.points[0].objectives[2]);
-
-  return volume;
-}
 
 
 double inclhv(POINT p)
@@ -368,135 +293,12 @@ double exclhv(FRONT ps, int p)
 {
   double volume = inclhv(ps.points[p]);
   if (ps.nPoints > p + 1) 
-    {makeDominatedBit(ps, p);
+    {
+     makeDominatedBit(ps, p);
      volume -= hv(fs[fr - 1]);
      fr--;
     }
   return volume;
-}
-
-
-int smallestpoint0(FRONT ps)
-// returns the least contributor in ps[0 ..] 
-// evaluates each point completely 
-{
-  int smallest = 0;
-  double smallestvolume = exclhv(ps, 0);
-  POINT t;
-  for (int i = 1; i < ps.nPoints; i++)
-    {t = ps.points[0];
-     ps.points[0] = ps.points[i];
-     ps.points[i] = t;
-     double volume = exclhv(ps, 0);
-     if (volume < smallestvolume) {smallest = i; smallestvolume = volume;}
-    }
-  return smallest;
-}
-
-
-int smallestpoint1(FRONT ps)
-// returns the least contributor in ps[0 ..] 
-// evaluates the first point completely, then as little as possible of each subsequent point 
-{
-  int smallest = 0;
-  double smallestvolume = exclhv(ps, 0);
-  POINT t;
-  for (int i = 1; i < ps.nPoints; i++)
-    {t = ps.points[0];
-     ps.points[0] = ps.points[i];
-     ps.points[i] = t;
-     makeDominatedBit(ps, 0);
-     double volume = inclhv(ps.points[0]);
-     #if opt > 0
-     qsort(fs[0].points, fs[0].nPoints, sizeof(POINT), greater);
-     #endif
-     for (int j = 0; j < fs[0].nPoints; j++)
-       volume -= inclhv(fs[0].points[j]);
-     int j = fs[0].nPoints - 2; 
-     while (volume < smallestvolume && j >= 0)
-       {makeDominatedBit(fs[0], j);
-        volume += hv(fs[1]);
-        fr--;
-        j--;
-       }
-     fr--;
-     // printf("j(%d) = %d\n", i, j);
-     if (volume < smallestvolume) {smallest = i; smallestvolume = volume;}
-    }
-  return smallest;
-}
-
-
-void fixHeap(JOB *js, int next)
-// fixes the heap js, next being the new smallest element
-{
-  /*
-        JOB jz = js[0];
-        js[0] = js[next];
-        js[next] = jz;
-        if (js[0].left == ps.nPoints)
-          {js[0].left = next; js[next].left = ps.nPoints; js[next].right = ps.nPoints;}
-        else if (js[0].right == ps.nPoints)
-          {js[0].right = next; js[next].left = ps.nPoints; js[next].right = ps.nPoints;}
-        else ;
-*/
-}
-
-
-int smallestpoint2(FRONT ps)
-// returns the least contributor in ps[0 ..] 
-// evaluates each point until it's positive, then (repeatedly) as little as possible of the current smallest point 
-{
-  // this space should be allocated once, up to maxm
-  JOB *js = malloc(sizeof(JOB) * (ps.nPoints + 1));
-  POINT t;
-  for (int i = 0; i < ps.nPoints; i++)
-    {t = ps.points[0];
-     ps.points[0] = ps.points[i];
-     ps.points[i] = t;
-     makeDominatedBit(ps, 0);
-     // printf("size(%d) = %d\n", i, fs[0].nPoints);
-     // generalise makeDominatedBit so the target front is a parameter, and save the copying?
-     js[i].sprime.nPoints = fs[0].nPoints;
-     js[i].sprime.points = malloc(sizeof(POINT) * js[i].sprime.nPoints);
-     for (int j = 0; j < js[i].sprime.nPoints; j++)
-       {js[i].sprime.points[j].objectives = malloc(sizeof(OBJECTIVE) * n);
-        for (int k = 0; k < n; k++)
-          js[i].sprime.points[j].objectives[k] = fs[0].points[j].objectives[k];
-       }
-     fr--;
-     js[i].id = i;
-     js[i].partial = inclhv(ps.points[0]);
-     #if opt > 0
-     qsort(js[i].sprime.points, js[i].sprime.nPoints, sizeof(POINT), greater);
-     #endif
-     for (int j = 0; j < js[i].sprime.nPoints; j++)
-       js[i].partial -= inclhv(js[i].sprime.points[j]);
-     js[i].k = js[i].sprime.nPoints - 2; 
-     while (js[i].partial < 0)
-       {makeDominatedBit(js[i].sprime, js[i].k);
-        js[i].partial += hv(fs[0]);
-        fr--;
-        js[i].k--;
-       }
-     printf("j(%d) = %d\n", i, js[i].k);
-    }
-  qsort(js, ps.nPoints, sizeof(JOB), smallersofar);
-  for (int i = 0; i < ps.nPoints - 1; i++) {js[i].left = i + 1; js[i].right = ps.nPoints;}
-  js[ps.nPoints - 1].left = ps.nPoints; js[ps.nPoints - 1].right = ps.nPoints;
-  js[ps.nPoints].partial = 99999999;
-  while (js[0].k >= 0)
-    {int next = js[js[0].left].partial < js[js[0].right].partial ? js[0].left : js[0].right;
-     while (js[0].k >= 0 && js[0].partial <= js[next].partial)
-       {makeDominatedBit(js[0].sprime, js[0].k);
-        js[0].partial += hv(fs[0]);
-        fr--;
-        js[0].k--;
-       }
-     printf("j(0) = %d\n", js[0].k);
-     if (js[0].partial > js[next].partial) {fixHeap(js, next); printf("loop!\n");}
-    }
-  return js[0].id;
 }
 
 
@@ -509,16 +311,8 @@ double hv(FRONT ps)
 
   #if opt == 2
   if (n == 2) return hv2(ps);
-  #elif opt == 4
-  if (n == 3) return hv3_lucas(ps);
-    //double hv3_2 = hv3(ps);
-    //double hv3_2 = hv3_1;
-    //if (abs(hv3_1 - hv3_2) > 0.00000001)
-    //  printf ("SIG DIFF: hv3_lucas %f, hv3 %f\n", hv3_1, hv3_2);
-    //return hv3_1;
-  //}
-  #else
-  if (n == 3) return hv3(ps);
+  #elif opt == 3
+  if (n == 3) return hv3_AVL(ps);
   #endif
 
   double volume = 0;
@@ -531,6 +325,7 @@ double hv(FRONT ps)
     // we can ditch dominated points here, 
     // but they will be ditched anyway in dominatedBit 
     volume += fabs(ps.points[i].objectives[n] - ref.objectives[n]) * exclhv(ps, i);
+
   n++; 
   #endif
 
@@ -554,39 +349,33 @@ int main(int argc, char *argv[])
   fs = malloc(sizeof(FRONT) * maxm);
   #else
 
-  int optn = opt;
-  // use 3 for tree 3d
-  if (optn == 4)
-    optn = 3;
-
-  // slicing (opt > 1) saves a level of recursion, but in incremental mode more levels are needed
-  int maxd = maxn - (optn / 2 + 1) + (optn / 3 + 1) * (1 - mode2); 
+  // slicing (opt > 1) saves a level of recursion
+  int maxd = maxn - (opt / 2 + 1); 
   fs = malloc(sizeof(FRONT) * maxd);
 
   // 3D base (opt = 3) needs space for the sentinels
-  int maxp = maxm + 2 * (optn / 3);
+  int maxp = maxm + 2 * (opt / 3);
   //int maxp = 100000;
   for (int i = 0; i < maxd; i++) 
     {fs[i].points = malloc(sizeof(POINT) * maxp); 
      for (int j = 0; j < maxp; j++) 
      {
        fs[i].points[j].tnode = malloc(sizeof(avl_node_t));
-       // slicing (opt > 1) saves one extra objective at each level, but again incremental needs more 
-       fs[i].points[j].objectives = malloc(sizeof(OBJECTIVE) * (maxn - (i + mode2) * (optn / 2)));
+       // slicing (opt > 1) saves one extra objective at each level
+       fs[i].points[j].objectives = malloc(sizeof(OBJECTIVE) * (maxn - (i + 1) * (opt / 2)));
      }
     }
   #endif
 
-    tree  = avl_alloc_tree ((avl_compare_t) compare_tree_asc,
-                            (avl_freeitem_t) free);
-
+  tree = avl_alloc_tree ((avl_compare_t) compare_tree_asc,
+                         (avl_freeitem_t) free);
 
   // initialise the reference point
   ref.objectives = malloc(sizeof(OBJECTIVE) * maxn);
   ref.tnode = malloc(sizeof(avl_node_t));
   if (argc == 2)
     {printf("No reference point provided: using the origin\n");
-     for (int i = 0; i < maxn; i++) ref.objectives[i] = 10000;
+     for (int i = 0; i < maxn; i++) ref.objectives[i] = 0;
     }
   else if (argc - 2 != maxn)
     {printf("Your reference point should have %d values\n", maxn);
@@ -595,53 +384,27 @@ int main(int argc, char *argv[])
   else 
   for (int i = 2; i < argc; i++) ref.objectives[i - 2] = atof(argv[i]);
 
-  POINT t;
   for (int i = 0; i < f->nFronts; i++) 
-    {
-      
+    {      
       struct timeval tv1, tv2;
       struct rusage ru_before, ru_after;
       getrusage (RUSAGE_SELF, &ru_before);
-
-      
+ 
       n = f->fronts[i].n;
-     switch (mode)
-       {case 0: 
-                #if opt >= 3
-                if (n == 2)
-                  {qsort(f->fronts[i].points, f->fronts[i].nPoints, sizeof(POINT), greater);
-                   printf("hv(%d) = %1.10f\n", i+1, hv2(f->fronts[i])); 
-                  }
-                else
-                #endif
-                printf("hv(%d) = %1.10f\n",     i+1, hv(f->fronts[i])); 
-                break; 
-        case 1: for (int j = 0; j < f->fronts[i].nPoints; j++)
-		  {t = f->fronts[i].points[0];
-                   f->fronts[i].points[0] = f->fronts[i].points[j];
-		   f->fronts[i].points[j] = t;
-                   printf("exclhv(%d)[%d] = %1.10f\n", i+1, j+1, exclhv(f->fronts[i], 0)); 
-		  }
-                break; 
-        case 2: printf("smallest(%d) = %d\n",   i+1, smallestpoint0(f->fronts[i])); break;
-        case 3: printf("smallest(%d) = %d\n",   i+1, smallestpoint1(f->fronts[i])); break;
-        case 4: printf("smallest(%d) = %d\n",   i+1, smallestpoint2(f->fronts[i])); break;
-       }
-          getrusage (RUSAGE_SELF, &ru_after);
-          tv1 = ru_before.ru_utime;
-          tv2 = ru_after.ru_utime;
-      
-          printf("Time: %f (s)\n", tv2.tv_sec + tv2.tv_usec * 1e-6 - tv1.tv_sec - tv1.tv_usec * 1e-6);
+      #if opt >= 3
+      if (n == 2)
+        {qsort(f->fronts[i].points, f->fronts[i].nPoints, sizeof(POINT), greater);
+         printf("hv(%d) = %1.10f\n", i+1, hv2(f->fronts[i])); 
+        }
+      else
+      #endif
+      printf("hv(%d) = %1.10f\n", i+1, hv(f->fronts[i])); 
 
-        //printf("Average time = %f s\n", (tv2.tv_sec + tv2.tv_usec * 1e-6 - tv1.tv_sec - tv1.tv_usec * 1e-6) / f->nFronts);
-
+      getrusage (RUSAGE_SELF, &ru_after);
+      tv1 = ru_before.ru_utime;
+      tv2 = ru_after.ru_utime;
+      printf("Time: %f (s)\n", tv2.tv_sec + tv2.tv_usec * 1e-6 - tv1.tv_sec - tv1.tv_usec * 1e-6);
     }
-
-  #if opt == 0
-  printf("frmax = %d\n", frmax);
-  #else
-  printf("frmax = %d\n", maxd);
-  #endif
 
   return 0;
 }

@@ -10,7 +10,7 @@ typedef double OBJECTIVE;
 typedef struct
 {
 	OBJECTIVE *objectives;
-        struct avl_node_t * tnode;
+      struct avl_node_t * tnode;
 } POINT;
 
 typedef struct
@@ -19,16 +19,6 @@ typedef struct
 	int n;
 	POINT *points;
 } FRONT;
-
-typedef struct
-{
-        FRONT sprime;   // reduced front 
-        int id;         // index in the original list 
-        int k;          // next segment to be evaluated 
-        double partial; // volume so far 
-        int left;       // left child in the heap 
-        int right;      // right child in the heap 
-} JOB;
 
 typedef struct
 {

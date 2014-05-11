@@ -1,5 +1,5 @@
 EXE = wfg
-OBJ = read.o avl.o 
+OBJ = read.o
 
 OPT = -O3 
 
@@ -24,7 +24,6 @@ $(EXE): $(OBJ) wfg.c
 	$(CC) -Dopt=0 -o wfg0 wfg.c $(OBJ)
 	$(CC) -Dopt=1 -o wfg1 wfg.c $(OBJ)
 	$(CC) -Dopt=2 -o wfg2 wfg.c $(OBJ)
-	$(CC) -Dopt=3 -o wfg3 wfg.c $(OBJ)
 
 %.o: %.c
 	$(CC) -c $<
